@@ -73,7 +73,7 @@ Workflow:
   ├── graph.py         # LangGraph workflow
   ├── utils/           # AI helpers (LLM, OCR, parsers)
   ├── models/          # Pydantic schemas
-/frontend
+/ai_doctor
   ├── src/
 
 
