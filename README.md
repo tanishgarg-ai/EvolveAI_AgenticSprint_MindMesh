@@ -1,14 +1,3 @@
-Here’s a clean and professional **`README.md`** draft for your project 👇
-You can copy this into your repo and tweak as needed.
-
----
-
-# 🩺 AI-Powered Patient Data & Lab Report Processing System
-
-An AI-driven healthcare assistant that collects patient information, extracts insights from lab reports, asks smart follow-up questions, and generates a **Doctor Dashboard** + **Structured PDF Report** to simplify medical consultations.
-
----
-
 ## 🚀 Features
 
 * **Patient Data Collection**
@@ -138,9 +127,6 @@ npm run dev
 
 ## 👨‍💻 Contributors
 
-* **\[Your Name]** – Project Lead & Developer
-* Team members & collaborators
+* Tanish Garg
+* Yatin Rastogi
 
----
-
-👉 Do you want me to also create a **badge section** (e.g., Python version, FastAPI, React, License, etc.) at the top of the README for a more GitHub-professional look?
