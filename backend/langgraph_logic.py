@@ -330,22 +330,52 @@ builder = StateGraph(PatientState)
 builder.add_node("preprocess", preprocess_node)
 builder.add_node("process_lab_reports", process_all_lab_reports_node)
 builder.add_node("refine_questions", refine_questions_node)
-# builder.add_node("initialize_chat", initialize_chat_node)
-# builder.add_node("ask_one_question", ask_one_question_node)
-# builder.add_node("triage_router", triage_router_node)
-# builder.add_node("general_medicine_analysis", general_medicine_analysis_node)
-# builder.add_node("cardiology_analysis", cardiology_analysis_node)
-# builder.add_node("dermatology_analysis", dermatology_analysis_node)
-# builder.add_node("generate_report", generate_report_node)
+builder.add_node("initialize_chat", initialize_chat_node)
+builder.add_node("ask_one_question", ask_one_question_node)
+builder.add_node("triage_router", triage_router_node)
+builder.add_node("general_medicine_analysis", general_medicine_analysis_node)
+builder.add_node("cardiology_analysis", cardiology_analysis_node)
+builder.add_node("dermatology_analysis", dermatology_analysis_node)
+builder.add_node("generate_report", generate_report_node)
 
 # Define the graph's edges and conditional routes
 builder.set_entry_point("preprocess")
 builder.add_edge("preprocess", "process_lab_reports")
 builder.add_edge("process_lab_reports", "refine_questions")
-builder.add_edge("refine_questions", END)
 
-# Compile the final graph
-graph = builder.compile()
+builder.add_conditional_edges(
+    "refine_questions",
+    decide_if_chat_needed,
+    {"start_chat": "initialize_chat", "no_chat_needed": "triage_router"}
+)
+
+builder.add_edge("initialize_chat", "ask_one_question")
+builder.add_conditional_edges(
+    "ask_one_question",
+    decide_to_continue_chat,
+    {"continue_chat": "ask_one_question", "end_chat": "triage_router"}
+)
+
+builder.add_conditional_edges(
+    "triage_router",
+    route_to_specialist,
+    {
+        "general_medicine": "general_medicine_analysis",
+        "cardiology": "cardiology_analysis",
+        "dermatology": "dermatology_analysis"
+    }
+)
+
+specialist_routing_map = {
+    "end_process": "generate_report",
+    "ask_more_questions": "initialize_chat"
+}
+builder.add_conditional_edges("general_medicine_analysis", decide_after_analysis, specialist_routing_map)
+builder.add_conditional_edges("cardiology_analysis", decide_after_analysis, specialist_routing_map)
+builder.add_conditional_edges("dermatology_analysis", decide_after_analysis, specialist_routing_map)
+
+builder.add_edge("generate_report", END)
+
 
 
 # --- MAIN EXECUTION BLOCK ---

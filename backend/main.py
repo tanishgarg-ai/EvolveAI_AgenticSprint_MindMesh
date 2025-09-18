@@ -10,15 +10,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # in prod: set to your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# -------------------------------
-# Schemas
-# -------------------------------
+
 class Vitals(BaseModel):
     temperature: str
     bp: str
@@ -45,18 +43,14 @@ class ChatRequest(BaseModel):
     answer: str
 
 
-# -------------------------------
-# In-memory session store
-# -------------------------------
-sessions: Dict[str, Dict] = {}         # raw graph state
-session_questions: Dict[str, List] = {} # missing questions
-session_index: Dict[str, int] = {}      # current index
-session_answers: Dict[str, List] = {}   # collected answers
+
+sessions: Dict[str, Dict] = {}
+session_questions: Dict[str, List] = {}
+session_index: Dict[str, int] = {}
+session_answers: Dict[str, List] = {}
 
 
-# -------------------------------
-# Start diagnosis
-# -------------------------------
+
 @app.post("/diagnose/start")
 def start(patient: HigherData):
     patient_dict = patient.dict()
@@ -68,14 +62,13 @@ def start(patient: HigherData):
     session_index[session_id] = 0
     session_answers[session_id] = []
 
-    # Return the first question right away (if exists)
     first_question = None
     if session_questions[session_id]:
         first_question = session_questions[session_id][0]
         session_index[session_id] = 1
 
     return {
-        "conversation_id": session_id,   # 🔄 renamed
+        "conversation_id": session_id,
         "pending_question": first_question,
         "total_questions": len(session_questions[session_id])
     }
