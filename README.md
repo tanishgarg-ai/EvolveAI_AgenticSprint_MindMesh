@@ -1,4 +1,4 @@
-## 🚀 Features
+## Features
 
 * **Patient Data Collection**
 
@@ -22,11 +22,11 @@
   * **PDF Report**:
     * Easy to share with doctors
     * Structured for quick review
-    * Includes demographics, history, and lab findings
+    * Includes history, and lab findings
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 **App (Frontend)** → **Backend API (FastAPI + AI Models)** → **AI Processing Layer** → **Outputs (Dashboard + PDF Report)**
 
@@ -40,17 +40,17 @@ Workflow:
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-* **Frontend**: React.js / React Native (for mobile app)
+* **Frontend**: React and Tailwindcss
 * **Backend**: FastAPI (Python), LangGraph / LangChain for AI orchestration
 * **AI/ML**:
   * LLMs (OpenAI OSS via Groq) for NLP & Q\&A
 ---
 
-## 📊 Benefits
+## Benefits
 
-* Saves doctors’ time by summarizing scattered patient data
+* Saves doctor's time by summarizing scattered patient data
 * Ensures **no critical detail is missed**
 * Improves **doctor–patient communication**
 * Provides **portable medical records** for consultations & telemedicine
@@ -58,14 +58,14 @@ Workflow:
 
 ---
 
-## ⚠️ Challenges & Solutions
+## Challenges & Solutions
 
 * **AI Accuracy** → Human-in-the-loop verification for critical values
 * **User Adoption** → Training & onboarding for doctors
 
 ---
 
-## 📂 Project Structure (suggested)
+## Project Structure (suggested)
 
 ```
 /backend
@@ -73,7 +73,7 @@ Workflow:
   ├── graph.py         # LangGraph workflow
   ├── utils/           # AI helpers (LLM, OCR, parsers)
   ├── models/          # Pydantic schemas
-/frontend
+/ai_doctor
   ├── src/
 
 
@@ -82,7 +82,7 @@ README.md
 
 ---
 
-## 🚦 Getting Started
+## Getting Started
 
 ### 1. Clone the repo
 
@@ -102,7 +102,7 @@ uvicorn main:app --reload
 ### 3. Setup frontend
 
 ```bash
-cd frontend
+cd ai_doctor
 npm install
 npm run dev
 ```
@@ -116,7 +116,7 @@ npm run dev
 * `GROQ_API_KEY=your_api_key_here`
 ---
 
-## 📌 Future Enhancements
+## Future Enhancements
 
 * Multi-language support for patient interaction
 * Integration with wearable devices (IoT vitals)
@@ -125,7 +125,7 @@ npm run dev
 
 ---
 
-## 👨‍💻 Contributors
+## Contributors
 
 * Tanish Garg
 * Yatin Rastogi
