@@ -3,7 +3,8 @@
 import markdown
 from xhtml2pdf import pisa
 
-def create_pdf_report(markdown_text: str, filename: str = "summary.pdf"):
+
+def create_pdf_report(markdown_text: str, filename: str = "../ai_doctor/src/components/summary.pdf"):
     """
     Creates a PDF file from a Markdown formatted string by converting it to HTML first.
     """
@@ -71,8 +72,8 @@ def create_pdf_report(markdown_text: str, filename: str = "summary.pdf"):
     with open(filename, "wb") as pdf_file:
         # Create the PDF
         pisa_status = pisa.CreatePDF(
-            styled_html,                # The HTML content
-            dest=pdf_file)              # File handle to receive result
+            styled_html,  # The HTML content
+            dest=pdf_file)  # File handle to receive result
 
     # Check if PDF creation was successful
     if not pisa_status.err:

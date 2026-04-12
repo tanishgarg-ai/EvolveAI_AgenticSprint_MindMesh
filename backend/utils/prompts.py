@@ -138,7 +138,7 @@ general_medicine_prompt = ChatPromptTemplate.from_messages([
        "analysis": {{
          "probable_diagnosis": {{
            "condition": "The most likely condition.",
-           "confidence_score": "A numerical percentage (e.g., 85).",
+           "confidence": "A numerical percentage (e.g., 85).",
            "reasoning": "Detailed step-by-step logic for your conclusion.",
            "evidence": ["List of specific data points from the conversation or labs that support this diagnosis. Example: 'Patient report of fever (102°F)'"],
            "urgency": "A single severity keyword: Low | Medium | High | Critical"
@@ -156,7 +156,7 @@ general_medicine_prompt = ChatPromptTemplate.from_messages([
      {{
        "status": "incomplete",
        "reasoning": "Briefly explain what critical information is missing and why it's needed.",
-       "missing_information": ["List of new, specific questions for the patient."]
+       "missing_information": ["Short list of new, specific questions for the patient."]
      }}
 
      Your response MUST be ONLY the single, appropriate JSON object. Do not add any other text.
