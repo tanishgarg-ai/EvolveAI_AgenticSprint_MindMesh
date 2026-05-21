@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Brain,
   Stethoscope,
@@ -13,15 +13,12 @@ import {
   Star,
   Award,
   Activity,
-  Heart,
-  Zap,
   Lock,
   Globe,
   BarChart3,
   MessageCircle,
   Phone,
   Mail,
-  ChevronDown,
   Menu,
   X
 } from 'lucide-react';

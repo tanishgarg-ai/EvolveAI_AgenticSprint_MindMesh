@@ -16,8 +16,8 @@ const PatientInputForm = ({
   onGenerateReport // NEW: Changed prop for clarity
 }) => {
   const [newSymptom, setNewSymptom] = useState('');
-  const labReportRef = useRef(null);
-  const healthRecordRef = useRef(null);
+  const labReportRef = useRef<HTMLInputElement>(null);
+  const healthRecordRef = useRef<HTMLInputElement>(null);
 
   const addSymptom = () => {
     if (newSymptom.trim()) {
@@ -269,7 +269,7 @@ const PatientInputForm = ({
 };
 
 // ... (ClinicianDashboard and AgentMonitoringPanel components remain unchanged) ...
-const ClinicianDashboard = ({ patientData, vitals, symptoms, setActiveTab, finalReportData }) => {
+const ClinicianDashboard = ({ patientData, vitals, symptoms, setActiveTab, finalReportData, finalReportUrl }: any) => {
     const calculateBMI = () => {
       if (patientData.weight && patientData.height) {
         const heightInMeters = patientData.height / 100;
@@ -277,19 +277,49 @@ const ClinicianDashboard = ({ patientData, vitals, symptoms, setActiveTab, final
       }
       return 'N/A';
     };
-    const primarySymptoms = symptoms.map(s => s.name).join(', ') || 'N/A';
-    const longestDuration = symptoms[0]?.duration.replace(/_/g, ' ') || 'N/A';
+    const rawInput = finalReportData?.raw_input?.patient_data;
+    const primarySymptoms = (rawInput?.symptoms && rawInput.symptoms !== 'No symptoms reported') 
+        ? rawInput.symptoms 
+        : (symptoms.length > 0 ? symptoms.map((s: any) => s.name).join(', ') : 'N/A');
+    const longestDuration = (rawInput?.duration && rawInput.duration !== 'N/A')
+        ? rawInput.duration
+        : (symptoms.length > 0 ? symptoms[0]?.duration.replace(/_/g, ' ') : 'N/A');
 
     // 💡 USE THE AI-GENERATED DATA FROM THE PROP
-    // The structure depends on what your 'doctor_analysis_node' returns.
-    // Let's assume it returns a 'ranked_diagnoses' list.
-    const diagnoses = finalReportData?.doctor_analysis?.ranked_diagnoses || [
-        // This array now serves as a fallback if the data isn't ready yet
-        { condition: 'Waiting for AI Analysis...', confidence: 0, evidence: [], urgency: 'low' }
-    ];
+    const analysisData = finalReportData?.final_analysis?.analysis;
+    let diagnoses: any[] = [];
 
-    // You can also get other data like alerts from the report
-    const criticalAlert = finalReportData?.doctor_analysis?.critical_alert;
+    if (analysisData) {
+        if (analysisData.probable_diagnosis) {
+            diagnoses.push({
+                condition: analysisData.probable_diagnosis.condition || 'Unknown',
+                confidence: analysisData.probable_diagnosis.confidence || 0,
+                evidence: analysisData.probable_diagnosis.evidence || [],
+                urgency: (analysisData.probable_diagnosis.urgency || 'low').toLowerCase()
+            });
+        }
+        if (analysisData.differential_diagnosis) {
+            let baseConfidence = Math.max(10, (analysisData.probable_diagnosis?.confidence || 80) - 15);
+            analysisData.differential_diagnosis.forEach((d: any, i: number) => {
+                diagnoses.push({
+                    condition: d.condition,
+                    confidence: Math.max(5, baseConfidence - (i * 15)),
+                    evidence: [d.reasoning],
+                    urgency: 'low'
+                });
+            });
+        }
+    }
+
+    if (diagnoses.length === 0) {
+        diagnoses = [
+            { condition: 'Waiting for AI Analysis...', confidence: 0, evidence: [], urgency: 'low' }
+        ];
+    }
+
+    const criticalAlert = analysisData?.probable_diagnosis?.urgency?.toLowerCase() === 'high' 
+        ? `Urgency: High - ${analysisData.probable_diagnosis.condition}` 
+        : null;
 
     return (
       <div className="max-w-7xl mx-auto p-6 bg-gray-100 min-h-screen">
@@ -352,6 +382,22 @@ const ClinicianDashboard = ({ patientData, vitals, symptoms, setActiveTab, final
                 ))}
               </div>
             </div>
+
+            {/* Generated PDF Report */}
+            {finalReportUrl && (
+              <div className="bg-white p-6 rounded-lg shadow-sm">
+                <div className="flex items-center mb-4">
+                  <FileText className="text-purple-500 mr-3" size={24} />
+                  <h2 className="text-xl font-semibold text-gray-800">Final Clinical Report</h2>
+                </div>
+                <iframe src={finalReportUrl} className="w-full h-96 border rounded-lg" title="Generated Report"></iframe>
+                <div className="mt-4 text-center">
+                  <a href={finalReportUrl} target="_blank" rel="noopener noreferrer" className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 inline-block">
+                    Open PDF in New Tab
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -381,11 +427,7 @@ const ClinicianDashboard = ({ patientData, vitals, symptoms, setActiveTab, final
             <AgentMonitoringPanel />
           </div>
         </div>
-         {/* Action Buttons */}
-         <div className="mt-8 flex justify-center space-x-4">
-           <button className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center"><CheckCircle className="mr-2" size={16} />Approve & Continue Care</button>
-           <button className="px-6 py-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 flex items-center"><Clock className="mr-2" size={16} />Request Additional Tests</button>
-           <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"><FileText className="mr-2" size={16} />Add Clinical Notes</button></div>
+         {/* Action Buttons Removed */}
       </div>
     );
   };
@@ -444,6 +486,7 @@ const DiagnosticSystem = () => {
   const [conversationId, setConversationId] = useState<string | null>(null);
   // This state will hold the final report data to pass to the dashboard
   const [finalReport, setFinalReport] = useState<any | null>(null);
+  const [finalReportUrl, setFinalReportUrl] = useState<string | null>(null);
 
 
   // --- Function to START the conversation ---
@@ -471,20 +514,25 @@ const handleStartConversation = async () => {
   };
 
   try {
-    const response = await fetch("http://127.0.0.1:8000/diagnose/start", {
+    const formData = new FormData();
+    formData.append("user_input_json", JSON.stringify(jsonData));
+    if (labReport) formData.append("lab_report", labReport);
+    if (healthRecord) formData.append("health_record", healthRecord);
+
+    const response = await fetch("http://127.0.0.1:8000/diagnose/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(jsonData),
+      body: formData,
     });
 
     const result = await response.json();
 
     setConversationId(result.conversation_id);
-    if (result.pending_question) {
-      setMessages([{ sender: "ai", text: result.pending_question }]);
+    if (result.ai_message) {
+      setMessages([{ sender: "ai", text: result.ai_message }]);
       setIsChatOpen(true);
-    } else {
-      setFinalReport(result.final_analysis);
+    } else if (result.is_complete) {
+      setFinalReport(result.final_report_data);
+      setFinalReportUrl(result.final_report_url);
       setActiveTab("results");
     }
   } catch (err) {
@@ -501,18 +549,22 @@ const handleContinueConversation = async (answer: string) => {
   setIsLoading(true);
 
   try {
-    const response = await fetch(`http://127.0.0.1:8000/diagnose/continue?conversation_id=${conversationId}`, {
+    const formData = new FormData();
+    formData.append("conversation_id", conversationId);
+    formData.append("user_input_json", JSON.stringify({ answer }));
+
+    const response = await fetch("http://127.0.0.1:8000/diagnose/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answer }),
+      body: formData,
     });
 
     const result = await response.json();
 
-    if (result.pending_question) {
-      setMessages(prev => [...prev, { sender: "ai", text: result.pending_question }]);
-    } else if (result.final_analysis) {
-      setFinalReport(result.final_analysis);
+    if (result.ai_message) {
+      setMessages(prev => [...prev, { sender: "ai", text: result.ai_message }]);
+    } else if (result.is_complete) {
+      setFinalReport(result.final_report_data);
+      setFinalReportUrl(result.final_report_url);
       setActiveTab("results");
       setIsChatOpen(false);
     }
@@ -569,6 +621,7 @@ const handleContinueConversation = async (answer: string) => {
           setActiveTab={setActiveTab}
           // You can now pass the final report data to the dashboard
           finalReportData={finalReport}
+          finalReportUrl={finalReportUrl}
         />
       )}
 

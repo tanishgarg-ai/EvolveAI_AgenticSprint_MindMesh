@@ -211,10 +211,12 @@ def generate_report_node(state: PatientState) -> Dict[str, str]:
         "lab_results": state.get("structured_input", {}).get("lab_results")
     }
 
-    # 2. This is the new logic to create the JSON file
-    # (Assuming a modified create_pdf_report or similar utility to get a unique name)
-    base_path = create_pdf_report("")
-    json_file_path = base_path.replace(".pdf", ".json")
+    # Create directory if it doesn't exist
+    os.makedirs("generated_reports", exist_ok=True)
+    import uuid
+    report_id = str(uuid.uuid4())
+    base_path = f"generated_reports/summary_{report_id}.pdf"
+    json_file_path = f"generated_reports/summary_{report_id}.json"
 
     with open(json_file_path, 'w', encoding='utf-8') as f:
         json.dump(report_data, f, ensure_ascii=False, indent=4)
@@ -225,7 +227,7 @@ def generate_report_node(state: PatientState) -> Dict[str, str]:
     print('final_json_data = ', final_json_data)
     report_chain = medical_report_prompt | llm
     markdown_report = report_chain.invoke({"final_json_data": final_json_data}).content
-    final_pdf_path = create_pdf_report(markdown_report)
+    final_pdf_path = create_pdf_report(markdown_report, filename=base_path)
 
     # 4. Return paths to BOTH files
     return {
