@@ -69,25 +69,24 @@ lab_prompt = ChatPromptTemplate.from_messages([
 # <-- NEW: Prompt for the Triage Router -->
 # In utils/prompts.py
 
-# <-- MODIFIED: This prompt is now much more focused -->
+# <-- This prompt is now much more focused -->
 triage_router_prompt = ChatPromptTemplate.from_messages([
     ("system",
      """You are a Triage Specialist AI. Your role is to determine which medical department a patient should be routed to based on their primary complaint.
 
      **Instructions:**
-     1. Analyze the provided patient complaint. # <-- MODIFIED
-     2. Choose one of the following departments: **"cardiology", "dermatology", "general_medicine"**.
+     1. Analyze the provided patient complaint.
+     2. Choose one of the following departments: **"cardiology", "general_medicine"**.
      3. If the complaint is clearly related to heart, blood pressure, or chest pain, choose "cardiology".
-     4. If the complaint is clearly related to skin, rashes, moles, or itching, choose "dermatology".
-     5. For all other cases (like fever, cough, fatigue, digestive issues, etc.), or if you are unsure, choose "general_medicine".
-     6. Your output MUST be a single JSON object with one key: "department".
+     4. For all other cases, or if you are unsure, choose "general_medicine".
+     5. Your output MUST be a single JSON object with one key: "department".
 
      **JSON Schema:**
      {{
         "department": "selected_department_name"
      }}
      """),
-    ("human", "Please triage the following patient complaint: \"{primary_complaint}\"") # <-- MODIFIED
+    ("human", "Please triage the following patient complaint: \"{primary_complaint}\"")
 ])
 
 # <-- NEW: Prompt for refining questions based on lab results -->

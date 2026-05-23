@@ -14,21 +14,35 @@ from utils.pdf_generator import create_pdf_report
 from utils.prompts import intake_prompt, lab_prompt, triage_router_prompt, general_medicine_prompt, cardiology_prompt, \
     dermatology_prompt, question_refinement_prompt, medical_report_prompt
 
+from utils.rag import retrieve_medical_context
 load_dotenv()
 
+from typing import List, Dict, Any, TypedDict, cast
+MAX_QUESTIONS = 6
 
 # --- AGENT STATE DEFINITION ---
 class PatientState(TypedDict, total=False):
+    # 1. Base Data
     raw_input: Dict[str, Any]
     structured_input: Dict[str, Any]
     messages: List[Dict[str, Any]]
+
+    # 2. Deterministic Loop Control (NEW)
     question_queue: List[str]
-    pending_question: str  # To hold the current question
+    asked_questions: List[str]  # Tracks exactly what we've already asked
+    question_count: int  # Hard counter to force the chat to end
+
+    # 3. Routing and Safety (NEW)
     diagnosis_path: str
+    red_flags: List[str]  # Holds critical safety warnings
+    retrieved_context: str  # Holds the RAG documents we will inject later
+
+    # 4. Final Output
     final_analysis: Dict[str, Any]
     report_path: str
-    analysis_history: List[Dict[str, Any]]
     report_json_path: str
+    analysis_history: List[Dict[str, Any]]
+    pending_question: str
 
 
 # --- (All your node and utility functions remain here, unchanged) ---
@@ -73,6 +87,31 @@ def preprocess_node(state: PatientState) -> Dict[str, Any]:
         structured_input = {"raw_llm_output": llm_response.content, "parsing_error": str(e)}
     return {"structured_input": structured_input, "messages": messages}
 
+
+def red_flag_check_node(state: PatientState) -> Dict[str, Any]:
+    print("--- 🚨 RED FLAG SAFETY CHECK ---")
+    symptoms = state.get("raw_input", {}).get("symptoms", "").lower()
+
+    red_flags = []
+    # Basic deterministic safety checks
+    if "chest pain" in symptoms and "sweating" in symptoms:
+        red_flags.append("Possible Acute Coronary Syndrome (ACS) - High Priority")
+    if "shortness of breath" in symptoms or "breathing" in symptoms:
+        red_flags.append("Respiratory distress indicator")
+
+    print(f"--- Found {len(red_flags)} Red Flags ---")
+    return {"red_flags": red_flags}
+
+
+def retrieve_context_node(state: PatientState) -> Dict[str, Any]:
+    print("--- 📚 RETRIEVING SPECIALTY GUIDELINES (RAG) ---")
+    specialty = state.get("diagnosis_path", "general_medicine")
+    symptoms = state.get("raw_input", {}).get("symptoms", "")
+
+    # Retrieve targeted docs from ChromaDB
+    context = retrieve_medical_context(symptoms, specialty)
+
+    return {"retrieved_context": context}
 
 def process_all_lab_reports_node(state: PatientState) -> Dict[str, Any]:
     print("--- 📄 PROCESSING LAB REPORTS ---")
@@ -123,21 +162,28 @@ def initialize_chat_node(state: PatientState) -> Dict[str, Any]:
 def ask_one_question_node(state: PatientState) -> Dict[str, Any]:
     question_queue = state.get("question_queue", [])
     if not question_queue:
-        return {"pending_question": None}  # Ensure pending is cleared if no questions
+        return {"pending_question": None}
 
-    # Pop the next question from the queue
+    # Pop the next question
     next_question = question_queue.pop(0)
 
     print(f"\n--- ❓ ASKING (API Mode): {next_question} ---")
 
-    # Get current messages and append the AI's question
     messages = state.get("messages", [])
     messages.append({"role": "ai", "content": next_question})
 
+    # --- NEW: Update our deterministic trackers ---
+    current_count = state.get("question_count", 0) + 1
+    asked = state.get("asked_questions", [])
+    if next_question not in asked:
+        asked.append(next_question)
+
     return {
-        "question_queue": question_queue,  # The updated queue (one item less)
-        "messages": messages,  # The updated message history
-        "pending_question": next_question  # The question we just asked
+        "question_queue": question_queue,
+        "messages": messages,
+        "pending_question": next_question,
+        "question_count": current_count,  # Saving the count to state
+        "asked_questions": asked  # Remembering the exact question
     }
 
 
@@ -163,29 +209,30 @@ def triage_router_node(state: PatientState) -> Dict[str, Any]:
 def run_specialist_analysis(state: PatientState, specialist_prompt, specialist_llm) -> Dict[str, Any]:
     structured_data = json.dumps(state.get("structured_input", {}), indent=2)
     conversation_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in state.get("messages", [])])
+
+    # Extract the new memory variables
+    red_flags = "\n".join(state.get("red_flags", ["None detected"]))
+    retrieved_context = state.get("retrieved_context", "No additional guidelines retrieved.")
+
     chain = specialist_prompt | specialist_llm
-    llm_response = chain.invoke({"structured_data": structured_data, "conversation_history": conversation_history})
+
+    # Pass them to the prompt
+    llm_response = chain.invoke({
+        "red_flags": red_flags,
+        "retrieved_context": retrieved_context,
+        "structured_data": structured_data,
+        "conversation_history": conversation_history
+    })
+
     cleaned_content = llm_response.content.strip().lstrip("```json").rstrip("```").strip()
     try:
         response_json = json.loads(cleaned_content)
         analysis_history = state.get("analysis_history", []).copy()
         analysis_history.append(response_json)
-        updates = {"final_analysis": response_json, "analysis_history": analysis_history}
-        if response_json.get("status") == "incomplete":
-            print("--- 🩺 SPECIALIST REQUIRES MORE INFORMATION ---")
-            updated_structured_input = state.get("structured_input", {}).copy()
-            updated_structured_input["missing_information"] = response_json.get("missing_information", [])
-            updates["structured_input"] = updated_structured_input
-        else:
-            print("--- ✅ ANALYSIS COMPLETE ---")
-        return updates
+        return {"final_analysis": response_json, "analysis_history": analysis_history}
     except Exception as e:
         print(f"--- ERROR in specialist analysis: {e} ---")
-        error_analysis = {"error": "Failed to parse analysis.", "raw_output": llm_response.content}
-        analysis_history = state.get("analysis_history", []).copy()
-        analysis_history.append(error_analysis)
-        return {"final_analysis": error_analysis, "analysis_history": analysis_history}
-
+        return {"final_analysis": {"error": "Failed to parse analysis."}}
 
 def general_medicine_analysis_node(state: PatientState) -> Dict[str, Any]:
     print("--- 🩺 GENERAL MEDICINE ANALYSIS ---")
@@ -248,12 +295,20 @@ def decide_if_chat_needed(state: PatientState) -> str:
 
 def decide_to_continue_chat(state: PatientState) -> str:
     print("--- 🤔 CONTINUE CHAT? ---")
+    question_count = state.get("question_count", 0)
+
+    # --- NEW: Backend Intervention ---
+    # If we hit the limit, we force the graph to move on to the triage/diagnosis phase
+    if question_count >= MAX_QUESTIONS:
+        print(f"--- 🛑 HARD LIMIT REACHED ({MAX_QUESTIONS} questions). ROUTING TO: triage_router ---")
+        return "end_chat"
+
     if state.get("question_queue"):
         print("--- ROUTING TO: ask_one_question (More questions remain) ---")
         return "continue_chat"
-    else:
-        print("--- ROUTING TO: triage_router (All questions asked) ---")
-        return "end_chat"
+
+    print("--- ROUTING TO: triage_router (All questions asked) ---")
+    return "end_chat"
 
 
 def route_to_specialist(state: PatientState) -> str:
@@ -275,55 +330,59 @@ def decide_after_analysis(state: PatientState) -> str:
 # --- BUILD AND COMPILE THE LANGGRAPH STATE MACHINE ---
 builder = StateGraph(PatientState)
 
+# Add all nodes
 builder.add_node("preprocess", preprocess_node)
 builder.add_node("process_lab_reports", process_all_lab_reports_node)
 builder.add_node("refine_questions", refine_questions_node)
 builder.add_node("initialize_chat", initialize_chat_node)
 builder.add_node("ask_one_question", ask_one_question_node)
+
+# New Nodes
+builder.add_node("red_flag_check", red_flag_check_node)
 builder.add_node("triage_router", triage_router_node)
+builder.add_node("retrieve_context", retrieve_context_node)
+
+# Specialist Nodes
 builder.add_node("general_medicine_analysis", general_medicine_analysis_node)
 builder.add_node("cardiology_analysis", cardiology_analysis_node)
-builder.add_node("dermatology_analysis", dermatology_analysis_node)
 builder.add_node("generate_report", generate_report_node)
 
+# --- Define the Flow ---
 builder.set_entry_point("preprocess")
 builder.add_edge("preprocess", "process_lab_reports")
 builder.add_edge("process_lab_reports", "refine_questions")
 
+# Start chat or skip to routing
 builder.add_conditional_edges("refine_questions", decide_if_chat_needed,
-                              {"start_chat": "initialize_chat", "no_chat_needed": "triage_router"})
+                              {"start_chat": "initialize_chat", "no_chat_needed": "red_flag_check"})
+
 builder.add_edge("initialize_chat", "ask_one_question")
+
+# The Chat Loop (Now protected by MAX_QUESTIONS)
 builder.add_conditional_edges("ask_one_question", decide_to_continue_chat,
-                              {"continue_chat": "ask_one_question", "end_chat": "triage_router"})
-builder.add_conditional_edges("triage_router", route_to_specialist,
-                              {"general_medicine": "general_medicine_analysis", "cardiology": "cardiology_analysis",
-                               "dermatology": "dermatology_analysis"})
+                              {"continue_chat": "ask_one_question", "end_chat": "red_flag_check"})
 
+# Move to Router, then to RAG
+builder.add_edge("red_flag_check", "triage_router")
+builder.add_edge("triage_router", "retrieve_context")
 
-def add_specialist_edges(specialist_name):
-    builder.add_conditional_edges(specialist_name, decide_after_analysis,
-                                  {"ask_more_questions": "initialize_chat", "end_process": "generate_report"})
+# Route to the specific agent based on Triage
+builder.add_conditional_edges("retrieve_context", route_to_specialist,
+                              {"general_medicine": "general_medicine_analysis",
+                               "cardiology": "cardiology_analysis"})
 
-
-add_specialist_edges("general_medicine_analysis")
-add_specialist_edges("cardiology_analysis")
-add_specialist_edges("dermatology_analysis")
-
+# After analysis, generate the report
+builder.add_edge("general_medicine_analysis", "generate_report")
+builder.add_edge("cardiology_analysis", "generate_report")
 builder.add_edge("generate_report", END)
 
-# --- COMPILE THE GRAPH WITH CHECKPOINTER AND INTERRUPT ---
 checkpointer = MemorySaver()
-
-# ✅ FIX: Tell the graph to pause after asking a question.
-# This prevents the recursion error by stopping the graph's execution
-# and waiting for the next user input.
 graph_with_checkpoint = builder.compile(
     checkpointer=checkpointer,
     interrupt_after=["ask_one_question"]
 )
-
-# Keep a non-interrupting version for testing if needed
 graph = builder.compile(checkpointer=checkpointer)
+
 
 # --- MAIN EXECUTION BLOCK ---
 if __name__ == "__main__":
