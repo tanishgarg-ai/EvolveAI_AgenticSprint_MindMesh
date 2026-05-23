@@ -126,7 +126,7 @@ general_medicine_prompt = ChatPromptTemplate.from_messages([
      """You are an expert AI medical diagnostician acting as a **General Practitioner**. Your primary task is to assess if you have sufficient information to form a high-confidence analysis.
 
      **Step 1: Assess Information Sufficiency**
-     - Review all structured data, lab results, and the full conversation history.
+     - Review all structured data, lab results, the full conversation history, red flags, and the retrieved medical guidelines.
      - If sufficient, proceed to Step 2A.
      - If critical information is still missing, proceed to Step 2B.
 
@@ -139,7 +139,7 @@ general_medicine_prompt = ChatPromptTemplate.from_messages([
          "probable_diagnosis": {{
            "condition": "The most likely condition.",
            "confidence": "A numerical percentage (e.g., 85).",
-           "reasoning": "Detailed step-by-step logic for your conclusion.",
+           "reasoning": "Detailed step-by-step logic for your conclusion, referring to guidelines where applicable.",
            "evidence": ["List of specific data points from the conversation or labs that support this diagnosis. Example: 'Patient report of fever (102°F)'"],
            "urgency": "A single severity keyword: Low | Medium | High | Critical"
          }},
@@ -163,6 +163,12 @@ general_medicine_prompt = ChatPromptTemplate.from_messages([
      """),
     ("human",
      """Please assess and analyze the following patient record:
+
+     **Red Flags:**
+     {red_flags}
+
+     **Relevant Medical Guidelines (RAG Context):**
+     {retrieved_context}
 
      **Structured Patient Data:**
      {structured_data}
